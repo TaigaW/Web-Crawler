@@ -28,7 +28,8 @@ class Crawler:
         mysocket.send(request.encode('ascii'))
 
         data = mysocket.recv(1000)
-        print('data????')
+        print("data???")
+        print(data)
         print("Response:\n%s" % data.decode('ascii'))
 
 if __name__ == "__main__":
