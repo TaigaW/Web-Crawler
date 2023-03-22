@@ -21,16 +21,29 @@ class Crawler:
 
     def run(self):
         #Accept-Encoding: gzip, deflate
-        request = "GET https://proj5.3700.network/fakebook/ HTTP/1.1\r\nHost: " + DEFAULT_SERVER + "\r\nUser-Agent: Mozilla/4.0 (compatible; MSIE5.01; Windows NT)\r\n" + "Accept-Language: en-us\r\n" + "Accept-Encoding: gzip, deflate" + "\r\n\r\n"
+        request = "GET /accounts/login/?next=/fakebook/ HTTP/1.1\r\nHost: " + DEFAULT_SERVER + "\r\n\r\n" #+ "\r\nUser-Agent: Mozilla/4.0 (compatible; MSIE5.01; Windows NT)\r\n" + "Accept-Language: en-us\r\n\r\n"
+        # need path, host, cookie
+        # Cookie : whatever the cookie is
+        # 302 - redirect; x has moved to location y in Location: header field
+        # very first request will be logging in, get the cookie after the response
+        # should use keep-alive or create a new TCP connection for each request
+        
 
-
-        # conn = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        # tls_context = ssl.create_default_context()
-        # conn = tls_context.wrap_socket(conn, server_hostname=args.hostname)
-        # conn.connect((args.hostname, args.port))
-
-
-
+        """
+        in our requests we have to 
+        - keep-alive. i don't wanna open upneiofhwuerf
+        - include csrf token + session ID from the first HTTP request we sent (both of these make up the cookie)
+        Set-Cookie: csrftoken=Tc3sy8rm3ADcYfVQqKVrjHP87VUtVn6ADjt5pffCovmj1Ous9kLIsCdmDv
+        Set-Cookie: sessionid=qrfww4f0b82wci0p8m3qy66ol76sbfc3; expires=Wed, 05 Apr 2023 17:50:57 GMT; HttpOnly; Max-Age=1209600; Path=/; SameSite=Lax 
+        
+        # response.split()
+        #
+        Questions:
+        - Why is the loop taking forever to run
+        separately
+        - How to put the cookies in the header, just append or put separately
+        - Should we post and then parse for links or parse and then post
+        """
 
         print("Request to %s:%d" % (self.server, self.port))
         print(request)
@@ -40,10 +53,42 @@ class Crawler:
         mysocket.connect((self.server, self.port))
         mysocket.send(request.encode('ascii'))
 
-        data = mysocket.recv(1000)
+        # have to receive in a loop (len(data != 0))
+        data = mysocket.recv(1000).strip()
+        print("Response: ")
+        while len(data) != 0:
+            print(data.decode('ascii'))
+            print("in the loop again/")
+            # if len(data) == 0:
+            #     print("no more data")
+            
+            data = mysocket.recv(1000).strip()
+
+            print("here?")
+
+            
+        #data = mysocket.recv(2048)
         # print("data???")
         # print(data)
-        print("Response:\n%s" % data.decode('ascii'))
+        # print("Response:\n%s" % data.decode('ascii'))
+        # how to download
+        """
+        request response has a header and a body
+        the body has the html, can be encrypted/compressed (in which case we need to decode)
+        need to look for 3 tags: <a>, <input>, <h2>
+            - <input/> - harvest the middleware token
+        to actually save the session, use the csrf middleware token
+            that goes into our cookie (has session ID)
+        usually on the fakebook website there's an input tag w a name and a csrf token and the value is our csrf token
+
+        eventually gonna want to harvesvt two things form the response:
+            - gives us a csrf middleware token, which is half of the cookie, and a session id
+            - both things are parameters of our get request
+        where does it go into the get request? does not need it
+        get request needs path, host, cookie
+        post request also needs middleware token
+
+        """
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='crawl Fakebook')
