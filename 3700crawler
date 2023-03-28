@@ -3,9 +3,21 @@
 import argparse
 import socket
 import ssl
+from html.parser import HTMLParser
 
 DEFAULT_SERVER = "proj5.3700.network"
 DEFAULT_PORT = 443
+
+inputs = []
+
+class MyHTMLParser(HTMLParser):
+    print("herereree")
+    def handle_starttag(self, tag, attrs):
+        if tag == "input":
+            print("Found an input element:", attrs)
+            inputs.append(attrs)
+
+
 
 class Crawler:
     def __init__(self, args):
@@ -43,6 +55,10 @@ class Crawler:
         separately
         - How to put the cookies in the header, just append or put separately
         - Should we post and then parse for links or parse and then post
+        - Should we use the set-cookie in the response or the set-cookie in the <input type...>
+        - How to get cookie from parser
+        - grabbing csrfmiddlware from tuples
+
         """
 
         print("Request to %s:%d" % (self.server, self.port))
@@ -54,19 +70,96 @@ class Crawler:
         mysocket.send(request.encode('ascii'))
 
         # have to receive in a loop (len(data != 0))
-        data = mysocket.recv(1000).strip()
+
+
+
+        firstResp = ""
+        data = mysocket.recv(1000)
         print("Response: ")
         while len(data) != 0:
             print(data.decode('ascii'))
-            print("in the loop again/")
+            firstResp += data.decode('ascii')
+            #print("Zezerofibo Mishveladze")
             # if len(data) == 0:
             #     print("no more data")
             
-            data = mysocket.recv(1000).strip()
+            data = mysocket.recv(1000)
 
-            print("here?")
+            #print("here?")
+        parser = MyHTMLParser()
+        parser.feed(firstResp)
+        # loop through the list that we receive
+        """
+        [('type', 'hidden'), ('name', 'csrfmiddlewaretoken'), ('value', 'GFOtaI7xehVXKasiWBF8S1ImE5x16Jpnai5Yb6jpit0qWp0LQYh20KXOlACqI8qT')]
+        for attr in attrs:
+            if attr[0] == "name":
+                if attr[1] == 'csrfmiddlewaretoken':
+                    # try to find value attribute
+                    # keep the corresponding value (the token)
 
+        """
+        #
+        # tuple = list[2]
+        # token = tuple[1]
+        cookie = ''
+        cmtval = None
+
+        # [('type', 'hidden'), ('name', 'csrfmiddlewaretoken'), ('value', 'pNuOAuCXswGqfYwMvripEST6aDa5jNuDABj0aVuwlV0PC38dliC35Gu32QCMW0vf')]
+        # [('type', 'submit'), ('value', 'Log in')]
+        foundCMT = False
+
+        # Found an input element: [('type', 'hidden'), ('name', 'next'), ('value', '/fakebook/')]
+        # Found an input element: [('type', 'hidden'), ('name', 'csrfmiddlewaretoken'), ('value', '0H7s5JreSh5HJL26lSlxp2Jy4P2FP0q0McxD4hAFtiilEABnIe1JcBcnyTZIWIkA')]
+
+        for input in inputs:
+            print(input)
+            if input[0] == "value":
+                cmtval = input[1]
+            if input[0] == "name" and input[1] == "csrfmiddlewaretoken":
+                foundCMT = True
+                
+        
+        if not foundCMT:
+            print("did not find CMT in the input tags")
+            cmtval = None
+        else:
+            print("found csrftoken: " + cmtval)
             
+            # for att in input:
+            #     if next:
+            #         cookie == att[1]
+            #         next = False
+            #         break
+            #     elif att[1] == 'csrfmiddlewaretoken':
+            #         next = True
+        
+        print("cookie" + cookie)
+            # if input['name'] == 'csrfmiddlewaretoken':
+            #     print('middle')
+        #HTMLParser.feed(firstResp)
+        
+
+        # request = "GET /accounts/login/?next=/fakebook/ HTTP/1.1\r\nHost: " + DEFAULT_SERVER + "\r\n\r\n"
+        #POST /users/login HTTP/1.1HOST: www.example.com Content-Type: application/x-www-form-urlencoded Content-Length: 25 username=ME&password=pass
+        body = 'username=<calle.d>&password=<001589490>&csrfmiddlewaretoken=<CSRF_TOKEN>&next=/fakebook/'
+        contLen = len(body)
+
+        postReq = "POST /accounts/login/ HTTP/1.1\r\nHost: " + DEFAULT_SERVER + "\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: {contLen}\r\n\r\n"
+        mysocket.send(postReq.encode('ascii'))
+        
+        data = mysocket.recv(1000)
+        print("Response: ")
+        while len(data) != 0:
+            print(data.decode('ascii'))
+            #print("Dougal Trufull")
+            # if len(data) == 0:
+            #     print("no more data")
+            
+            data = mysocket.recv(1000)
+
+            #print("here?")
+        # Post url HTTP/1.1\r\nHost: " + DEFAULT_SERVER + "\r\n\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: {len(encoded_data)}\r\n\r\n{encoded_data.decode('utf-8')}"
+
         #data = mysocket.recv(2048)
         # print("data???")
         # print(data)
