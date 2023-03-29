@@ -16,6 +16,10 @@ class MyHTMLParser(HTMLParser):
         if tag == "input":
             print("Found an input element:", attrs)
             inputs.append(attrs)
+    # def unknown_decl(self, data): #: str) -> None:
+    #     # return super().unknown_decl(data)
+    #     print("unknown data")
+    #     print(data)
 
 
 
@@ -42,6 +46,12 @@ class Crawler:
         
 
         """
+
+
+
+
+
+
         in our requests we have to 
         - keep-alive. i don't wanna open upneiofhwuerf
         - include csrf token + session ID from the first HTTP request we sent (both of these make up the cookie)
@@ -58,6 +68,7 @@ class Crawler:
         - Should we use the set-cookie in the response or the set-cookie in the <input type...>
         - How to get cookie from parser
         - grabbing csrfmiddlware from tuples
+        - What link to send to
 
         """
 
@@ -71,14 +82,16 @@ class Crawler:
 
         # have to receive in a loop (len(data != 0))
 
+        """
+        
+        """
 
-
-        firstResp = ""
+        firstResp = b''
         data = mysocket.recv(1000)
         print("Response: ")
         while len(data) != 0:
             print(data.decode('ascii'))
-            firstResp += data.decode('ascii')
+            firstResp += data#.decode('ascii')
             #print("Zezerofibo Mishveladze")
             # if len(data) == 0:
             #     print("no more data")
@@ -86,7 +99,47 @@ class Crawler:
             data = mysocket.recv(1000)
 
             #print("here?")
+        
+        mysocket.close()
+
         parser = MyHTMLParser()
+
+        contLenHead = b'Content-Length: '
+        index = firstResp.find(contLenHead)
+        if index != -1:
+            start = index + len(contLenHead)
+            end = firstResp.find(b'\r\n', start)
+            contentLength = int(firstResp[start:end])
+            print("Content len " + str(contentLength))
+        sessionIdHead = b'Set-Cookie: '
+        index = firstResp.find(sessionIdHead)
+        if index != -1:
+            start = index + len(sessionIdHead)
+            end = firstResp.find(b'\r\n', start)
+            sessionId = str(firstResp[start:end])
+            print("Session Id " + str(sessionId))
+
+
+
+
+        firstResp = firstResp.decode('ascii')
+        headers = []
+        headers = firstResp.split('\r\n\r\n')[0].split('\r\n')
+        headDict = {}
+        next = False
+        secondCookie = ""
+        for header in headers[1:]:
+            key, value = header.split(': ')
+            headDict[key] = value
+            if str(key) == "Set-Cookie":
+                if next:
+                    secondCookie = value
+                    break
+                next = True
+                
+        print("second cookie " + str(secondCookie))
+
+
         parser.feed(firstResp)
         # loop through the list that we receive
         """
@@ -96,27 +149,28 @@ class Crawler:
                 if attr[1] == 'csrfmiddlewaretoken':
                     # try to find value attribute
                     # keep the corresponding value (the token)
-
         """
-        #
-        # tuple = list[2]
-        # token = tuple[1]
+        
         cookie = ''
         cmtval = None
-
-        # [('type', 'hidden'), ('name', 'csrfmiddlewaretoken'), ('value', 'pNuOAuCXswGqfYwMvripEST6aDa5jNuDABj0aVuwlV0PC38dliC35Gu32QCMW0vf')]
-        # [('type', 'submit'), ('value', 'Log in')]
         foundCMT = False
-
-        # Found an input element: [('type', 'hidden'), ('name', 'next'), ('value', '/fakebook/')]
-        # Found an input element: [('type', 'hidden'), ('name', 'csrfmiddlewaretoken'), ('value', '0H7s5JreSh5HJL26lSlxp2Jy4P2FP0q0McxD4hAFtiilEABnIe1JcBcnyTZIWIkA')]
 
         for input in inputs:
             print(input)
-            if input[0] == "value":
-                cmtval = input[1]
-            if input[0] == "name" and input[1] == "csrfmiddlewaretoken":
-                foundCMT = True
+            # input is of form:
+            for tup in input:
+                if tup[0] ==  "name" and tup[1] == "csrfmiddlewaretoken":
+                    foundCMT = True 
+                    break
+            # if we found the token
+            if foundCMT:
+                # find the value within the list
+                for tup in input:
+                    if tup[0] == "value":
+                        cmtval = tup[1]
+                        break
+                break
+            
                 
         
         if not foundCMT:
@@ -133,22 +187,27 @@ class Crawler:
             #     elif att[1] == 'csrfmiddlewaretoken':
             #         next = True
         
-        print("cookie" + cookie)
             # if input['name'] == 'csrfmiddlewaretoken':
             #     print('middle')
         #HTMLParser.feed(firstResp)
-        
+            
 
         # request = "GET /accounts/login/?next=/fakebook/ HTTP/1.1\r\nHost: " + DEFAULT_SERVER + "\r\n\r\n"
         #POST /users/login HTTP/1.1HOST: www.example.com Content-Type: application/x-www-form-urlencoded Content-Length: 25 username=ME&password=pass
-        body = 'username=<calle.d>&password=<001589490>&csrfmiddlewaretoken=<CSRF_TOKEN>&next=/fakebook/'
+        body = 'username=calle.d&password=001589490' #&csrfmiddlewaretoken=<CSRF_TOKEN>&next=/fakebook/'
         contLen = len(body)
 
-        postReq = "POST /accounts/login/ HTTP/1.1\r\nHost: " + DEFAULT_SERVER + "\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: {contLen}\r\n\r\n"
+        postReq = "POST /accounts/login/ HTTP/1.1\r\nHOST: " + DEFAULT_SERVER + "\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: {contLen}\r\n" + "{body}\r\n\r\n" #+ #"Set-Cookie: csrftoken={cmtval}\r\nSet-Cookie: sessionid={secondCookie}\n\n{body}\r\n\r\n"
+        
+        mysocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        ssl_context = ssl.create_default_context()
+        mysocket = ssl_context.wrap_socket(mysocket, server_hostname=DEFAULT_SERVER)
+        mysocket.connect((self.server, self.port))
+        
         mysocket.send(postReq.encode('ascii'))
         
         data = mysocket.recv(1000)
-        print("Response: ")
+        print("Response after POST: ")
         while len(data) != 0:
             print(data.decode('ascii'))
             #print("Dougal Trufull")
@@ -180,6 +239,8 @@ class Crawler:
         where does it go into the get request? does not need it
         get request needs path, host, cookie
         post request also needs middleware token
+
+        
 
         """
 
