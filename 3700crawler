@@ -14,6 +14,7 @@ DEFAULT_PORT = 443
 inputs = []
 links = []
 oldLinks = []
+h2tags = []
 
 class MyHTMLParser(HTMLParser):
     print("herereree")
@@ -28,8 +29,18 @@ class MyHTMLParser(HTMLParser):
                 print(str(links))
         if tag == "h2":
             print("h2 tag: " + str(attrs))
+            h2tags.append(attrs)
+        # <h2><span>text</span>flag:</h2>
+        # tags: h2, span, h3
+        # data: text, flag
+
+        #.string
+
+
+        # <h2>flag:</h2>
     def handle_data(self, data):
-        print("Some data was found: " + data) 
+        return None
+        # print("Some data was found: " + data) 
     # def unknown_decl(self, data): #: str) -> None:
     #     # return super().unknown_decl(data)
     #     print("unknown data")
@@ -62,18 +73,42 @@ class Crawler:
         1. keep a list of all the links we're going to GET & parse through
             - This will come from anchor tags and can start at 'GET /'
         2. in a loop, send and receive the HTTP requests from the server
-        3. Extract <h2>, <input>, and <a> tags and their values
+        3. Extract <h2>, and <a> tags and their values
             - <h2> might be a flag
-            - <input> ... ?
             - <a> -> gives a new link to add to the list of links. we will eventually search through it
         """
 
+        return None
+    
 
+    def grabCookies(self, response):
+        copyResp = response.decode('ascii')
+        cookies = []
+        for header in copyResp.split('\r\n'):
+            if header.startswith('Set-Cookie:'):
+                cookies.append(header[len('Set-Cookie:'):].strip())
+        firstCookie = cookies[0].split(';')[0]
+        secondCookie = cookies[1].split(';')[0]
+        wholeCookie = firstCookie + "; " + secondCookie
+        
+        return wholeCookie
 
-        return
+        
 
+    def handleCodes(self, response):
+        #code = int(response.split()[1])
+        copyResp = response.decode('ascii')
+        code = int(copyResp.split()[1])
+        print("helper code code " + str(code))
+        if code >= 300 and code < 400:
+            newLocation = ""
+            for headers in copyResp.split('\r\n'):
+                if headers.startswith('Location:'):
+                    newLocation = headers[len('Location:'):].strip()
+                    print(newLocation)
+                    return newLocation
 
-
+        return None
 
     def run(self):
         #Accept-Encoding: gzip, deflate
@@ -133,6 +168,9 @@ class Crawler:
             print("Content len " + str(contentLength))
         
         firstResp = firstResp.decode('ascii')
+
+        print("firstResp code" + str(int(firstResp.split()[1])))
+
         headers = []
         headers = firstResp.split('\r\n\r\n')[0].split('\r\n')
         headDict = {}
@@ -245,16 +283,10 @@ class Crawler:
         # print("Response after POST: ")
         # print(data)
 
-        contLenHead = b'Content-Length: '
-        index = data.find(contLenHead)
-        if index != -1:
-            start = index + len(contLenHead)
-            end = data.find(b'\r\n', start)
-            contentLength = int(data[start:end])
-            print("Content len " + str(contentLength))
-
+        postResp = b''
         while len(data) != 0:
             print(data.decode('ascii'))
+            postResp += data
             #print("Dougal Trufull")
             # if len(data) == 0:
             #     print("no more data")
@@ -263,15 +295,22 @@ class Crawler:
                 break
 
             data = mysocket.recv(1000)
+
+        newCookie = self.grabCookies(postResp)
         
         mysocket.close()
+
+
+
+
         print("GET AFTER LOGGING IN")
 
-        links.append("/")
+        links.append("/accounts/login/?next=/fakebook/")
         print("new links here " + str(links))
         print("hi") if links else print ("no links")
 
         while links:
+            
             print("newlink")
             mysocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             ssl_context = ssl.create_default_context()
@@ -282,10 +321,14 @@ class Crawler:
             nextLink = links.pop(0)
             oldLinks.append(nextLink)
             
-            newGet = "GET " + nextLink + " HTTP/1.1\r\nHost: " + DEFAULT_SERVER + "\r\nCookie: " + csrftoken + "; " + secondCookie + "\r\n\r\n"
+            print("SENDING GET REQUEST TO " + nextLink)
+            newGet = "GET " + nextLink + " HTTP/1.1\r\nHost: " + DEFAULT_SERVER + "\r\nCookie: " + newCookie + "\r\n\r\n"
+
+            #newGet = "GET " + nextLink + " HTTP/1.1\r\nHost: " + DEFAULT_SERVER + "\r\nCookie: " + csrftoken + "; " + secondCookie + "\r\n\r\n"
             print("GET REQUEST WE SEND IN LOOP")
             print(newGet)
             mysocket.send(newGet.encode('ascii'))
+            print(str(links))
 
             # read response & parse
             newResp = b''
@@ -298,12 +341,51 @@ class Crawler:
                     break
                 data = mysocket.recv(1000)
             
+            mysocket.close()
+
+
+            # parse the header for response code 
+            # if we get 3, send the request for the location
+            
+            
             nextParser = MyHTMLParser()
+            
             nextParser.feed(newResp.decode('ascii'))
+            newLocation = self.handleCodes(newResp)
+            if newLocation != None:
+                print("was new loc")
+                newGetLoc = "GET " + newLocation + " HTTP/1.1\r\nHost: " + DEFAULT_SERVER + "\r\nCookie: " + newCookie + "\r\n\r\n"
+                
+                #HTTP/1.1fdsafdas
+                print("new request \n" + str(newGetLoc))
+                oldLinks.append(newLocation)
+
+                print(newGetLoc)
+
+                mysocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                ssl_context = ssl.create_default_context()
+                mysocket = ssl_context.wrap_socket(mysocket, server_hostname=DEFAULT_SERVER)
+                mysocket.connect((self.server, self.port))
+
+                mysocket.send(newGetLoc.encode('ascii'))
+
+                newResp = b''
+                data = mysocket.recv(1000)
+                while len(data) != 0:
+                    print(data.decode('ascii'))
+                    newResp += data
+
+                    if len(data) < 1000:
+                        break
+                    data = mysocket.recv(1000)
+                
+                mysocket.close()
+
+
+            
             print("links to parse through")
             print(links)
 
-            mysocket.close()
             
         
         
