@@ -4,15 +4,31 @@ import argparse
 import socket
 import ssl
 from html.parser import HTMLParser
+from bs4 import BeautifulSoup
 # maybe use beautiful soup?
 # https://beautiful-soup-4.readthedocs.io/en/latest/
+# to retrieve the text within a tag, it's tag.string
 # 
+
+
+
+"""
+ - Read data faster
+ - Grab flags
+ - Handle 403, 404, and 503
+ - Abstract "GET" request functionality
+
+"""
+
+
+
 
 DEFAULT_SERVER = "proj5.3700.network"
 DEFAULT_PORT = 443
 
 inputs = []
 links = []
+flags = []
 oldLinks = []
 h2tags = []
 
@@ -37,14 +53,7 @@ class MyHTMLParser(HTMLParser):
         #.string
 
 
-        # <h2>flag:</h2>
-    def handle_data(self, data):
-        return None
-        # print("Some data was found: " + data) 
-    # def unknown_decl(self, data): #: str) -> None:
-    #     # return super().unknown_decl(data)
-    #     print("unknown data")
-    #     print(data)
+        
 
 
 
@@ -54,21 +63,32 @@ class MyHTMLParser(HTMLParser):
 
 
 class Crawler:
-
-    
     def __init__(self, args):
         self.server = args.server
         self.port = args.port
         self.username = args.username
         self.password = args.password
-
-
-
     # Get 
     # Post to login
 
+    def parseForLinks(self, soup): #, response):
+        anchors = soup.find_all('a')
+        print("found anchors: " + str(anchors))
+        for anchor in anchors:
+            print("one anchor " + str(anchor))
+            if anchor.href not in links and anchor.href not in oldLinks:
+                print("adding link " + str(anchor.get("href")))
+                links.append(anchor.get("href"))
+            
 
-    def parseForLinks(self, response):
+    def parseForFlags(self, soup):
+        h2tags = soup.find_all("h2")
+        for tag in h2tags:
+            text = tag.string
+            if text.find("flag") != -1:
+                flags.append(text)
+        
+
         """
         1. keep a list of all the links we're going to GET & parse through
             - This will come from anchor tags and can start at 'GET /'
@@ -93,8 +113,6 @@ class Crawler:
         
         return wholeCookie
 
-        
-
     def handleCodes(self, response):
         #code = int(response.split()[1])
         copyResp = response.decode('ascii')
@@ -109,6 +127,43 @@ class Crawler:
                     return newLocation
 
         return None
+    
+    def getcmtval(self, soup):
+        inputs = soup.find_all("input")
+        cmtval = None
+        foundCMT = False
+
+        print('inputs list is')
+        # print(inputs)
+        for input in inputs:
+            print("input " + str(input))
+            # input is of form:
+            #name = soup.fin
+            if input.get('name') == "csrfmiddlewaretoken":
+                print("found cmt " + input.get('value'))
+                return input.get('value')
+            print(input.get('value'))
+
+            # for tup in input:
+            #     if tup[0] ==  "name" and tup[1] == "csrfmiddlewaretoken":
+            #         foundCMT = True 
+            #         break
+            # # if we found the token
+            # if foundCMT:
+            #     # find the value within the list
+            #     for tup in input:
+            #         if tup[0] == "value":
+            #             cmtval = tup[1]
+            #             break
+            #     break
+            
+        # if not foundCMT:
+        #     print("did not find CMT in the input tags")
+        #     cmtval = None
+        # else:
+        #     print("found csrfmiddlewaretoken: " + cmtval)
+        
+        # return cmtval
 
     def run(self):
         #Accept-Encoding: gzip, deflate
@@ -142,12 +197,12 @@ class Crawler:
         while len(data) != 0:
             print("DATA LENGTH: " + str(len(data)))
             print(data.decode('ascii'))
-            firstResp += data#.decode('ascii')
-            #print("Zezerofibo Mishveladze")
+            firstResp += data #.decode('ascii')
+            # print("Zezerofibo Mishveladze")
             # if len(data) == 0:
             #     print("no more data")
-            if len(data) < 1000:
-                break
+            # if len(data) < 1000:
+            #     break
             data = mysocket.recv(1000)
             print("DATA LENGTH: " + str(len(data)))
             
@@ -156,18 +211,29 @@ class Crawler:
         
         print("done reading")
         mysocket.close()
-
-        parser = MyHTMLParser()
-
-        contLenHead = b'Content-Length: '
-        index = firstResp.find(contLenHead)
-        if index != -1:
-            start = index + len(contLenHead)
-            end = firstResp.find(b'\r\n', start)
-            contentLength = int(firstResp[start:end])
-            print("Content len " + str(contentLength))
         
+        soup = BeautifulSoup(firstResp, "html.parser")
+        #middleToken = soup.find('input', {'name': 'csrfmiddlewaretoken'})['value']
+        #print("MIDDLE VAL " + str(middleToken))
+        print("pretty soups " + soup.prettify())
         firstResp = firstResp.decode('ascii')
+        print("first response is")
+        print(firstResp)
+        # soup = BeautifulSoup(html_doc, 'html.parser')
+        
+        # print(soup.prettify())
+        # print("soup title is " + soup.div)
+        #inputs = soup.find_all(inputs)
+        #parser = MyHTMLParser()
+        # contLenHead = b'Content-Length: '
+        # index = firstResp.find(contLenHead)
+        # if index != -1:
+        #     start = index + len(contLenHead)
+        #     end = firstResp.find(b'\r\n', start)
+        #     contentLength = int(firstResp[start:end])
+        #     print("Content len " + str(contentLength))
+        
+        #firstResp = firstResp.decode('ascii')
 
         print("firstResp code" + str(int(firstResp.split()[1])))
 
@@ -195,59 +261,17 @@ class Crawler:
         print("csrftoken " + str(csrftoken))
         print("second cookie " + str(secondCookie))
 
-
-        parser.feed(firstResp)
-        # loop through the list that we receive
-        """
-        [('type', 'hidden'), ('name', 'csrfmiddlewaretoken'), ('value', 'GFOtaI7xehVXKasiWBF8S1ImE5x16Jpnai5Yb6jpit0qWp0LQYh20KXOlACqI8qT')]
-        for attr in attrs:
-            if attr[0] == "name":
-                if attr[1] == 'csrfmiddlewaretoken':
-                    # try to find value attribute
-                    # keep the corresponding value (the token)
-        """
-        
+        # #parser.feed(firstResp)
+    
         cookie = ''
-        cmtval = None
-        foundCMT = False
-
-        for input in inputs:
-            print(input)
-            # input is of form:
-            for tup in input:
-                if tup[0] ==  "name" and tup[1] == "csrfmiddlewaretoken":
-                    foundCMT = True 
-                    break
-            # if we found the token
-            if foundCMT:
-                # find the value within the list
-                for tup in input:
-                    if tup[0] == "value":
-                        cmtval = tup[1]
-                        break
-                break
-            
-        if not foundCMT:
-            print("did not find CMT in the input tags")
-            cmtval = None
-        else:
-            print("found csrfmiddlewaretoken: " + cmtval)
-            
-            # for att in input:
-            #     if next:
-            #         cookie == att[1]
-            #         next = False
-            #         break
-            #     elif att[1] == 'csrfmiddlewaretoken':
-            #         next = True
-        
-            # if input['name'] == 'csrfmiddlewaretoken':
-            #     print('middle')
-        #HTMLParser.feed(firstResp)
-            
+        print("getting cmt val")
+        cmtval = self.getcmtval(soup)
+        print("cmtval " + str(cmtval))
+        # foundCMT = False
 
         # request = "GET /accounts/login/?next=/fakebook/ HTTP/1.1\r\nHost: " + DEFAULT_SERVER + "\r\n\r\n"
         #POST /users/login HTTP/1.1HOST: www.example.com Content-Type: application/x-www-form-urlencoded Content-Length: 25 username=ME&password=pass
+        # TODO: this should be refactored to work for any username & password combo
         body = 'username=calle.d&password=001589490&csrfmiddlewaretoken='+ cmtval + '&next=/'#+ '\r\n\r\n' 
         #+ '&next=/'# \r\n\r\n'  #+ '&next=/fakebook/'  #&csrfmiddlewaretoken=<CSRF_TOKEN>&next=/fakebook/'
         contLen = len(body)
@@ -337,20 +361,24 @@ class Crawler:
                 print(data.decode('ascii'))
                 newResp += data
 
-                if len(data) < 1000:
-                    break
+                # if len(data) < 1000:
+                #     break
                 data = mysocket.recv(1000)
             
             mysocket.close()
 
 
+            # function sendGet():
+
             # parse the header for response code 
             # if we get 3, send the request for the location
             
+            #newResp = newResp.decode('ascii')
+            soup = BeautifulSoup(newResp, "html.parser")
+            self.parseForLinks(soup)
+            #nextParser = MyHTMLParser()
             
-            nextParser = MyHTMLParser()
-            
-            nextParser.feed(newResp.decode('ascii'))
+            #nextParser.feed(newResp.decode('ascii'))
             newLocation = self.handleCodes(newResp)
             if newLocation != None:
                 print("was new loc")
@@ -381,15 +409,38 @@ class Crawler:
                 
                 mysocket.close()
 
+                newResp = newResp.decode('ascii')
+                soup = BeautifulSoup(newResp, "html.parser")
+                self.parseForLinks(soup)
+
 
             
             print("links to parse through")
             print(links)
 
-            
+        
+        # for att in input:
+            #     if next:
+            #         cookie == att[1]
+            #         next = False
+            #         break
+            #     elif att[1] == 'csrfmiddlewaretoken':
+            #         next = True
+        
+            # if input['name'] == 'csrfmiddlewaretoken':
+            #     print('middle')
+        #HTMLParser.feed(firstResp)
         
         
-        
+        # loop through the list that we receive
+        """
+        [('type', 'hidden'), ('name', 'csrfmiddlewaretoken'), ('value', 'GFOtaI7xehVXKasiWBF8S1ImE5x16Jpnai5Yb6jpit0qWp0LQYh20KXOlACqI8qT')]
+        for attr in attrs:
+            if attr[0] == "name":
+                if attr[1] == 'csrfmiddlewaretoken':
+                    # try to find value attribute
+                    # keep the corresponding value (the token)
+        """
         
         """
         1. keep a list of all the links we're going to GET & parse through
@@ -419,8 +470,6 @@ class Crawler:
         #     contentLength = int(data[start:end])
         #     print("Content len " + str(contentLength))
 
-        
-        
         # ind1 = data.find("Content-Length:")
         # cont_len = int(data[ind1+1])
         # print("GRABBED CONTENT LENGTH " + str(cont_len))
@@ -446,15 +495,8 @@ class Crawler:
 
         # we can start getting at /fakebook/
 
-        
 
         """
-
-
-
-
-
-
         in our requests we have to 
         - keep-alive. i don't wanna open upneiofhwuerf
         - include csrf token + session ID from the first HTTP request we sent (both of these make up the cookie)
