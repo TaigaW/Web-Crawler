@@ -113,7 +113,7 @@ class Crawler:
     def makeSock(self):
         mysocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         ssl_context = ssl.create_default_context()
-        mysocket = ssl_context.wrap_socket(mysocket, server_hostname=self.server)
+        mysocket = ssl_context.wrap_socket(mysocket, server_hostname=DEFAULT_SERVER)
         #mysocket = ssl_context.wrap_socket(mysocket, server_hostname=DEFAULT_SERVER)
         #print("sever " + str(self.server) + "port " + str(self.port))
         mysocket.connect((self.server, self.port))
@@ -257,7 +257,7 @@ class Crawler:
             self.parseForFlags(soup)
             # print(soup.find_all("h2"))
             # print("flags len: " + str(len(flags)))
-            #print(flags)
+            print(flags)
 
             mysocket.close()
 
