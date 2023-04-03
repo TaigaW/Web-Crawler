@@ -257,7 +257,7 @@ class Crawler:
             self.parseForFlags(soup)
             # print(soup.find_all("h2"))
             # print("flags len: " + str(len(flags)))
-            # print(flags)
+            #print(flags)
 
             mysocket.close()
 
