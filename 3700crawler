@@ -8,20 +8,14 @@ from bs4 import BeautifulSoup
 # maybe use beautiful soup?
 # https://beautiful-soup-4.readthedocs.io/en/latest/
 # to retrieve the text within a tag, it's tag.string
-# 
-
-
 
 """
  - Read data faster
  - Grab flags
  - Handle 403, 404, and 503
  - Abstract "GET" request functionality
-
+ - stop hardcoding the username and password
 """
-
-
-
 
 DEFAULT_SERVER = "proj5.3700.network"
 DEFAULT_PORT = 443
@@ -46,16 +40,6 @@ class MyHTMLParser(HTMLParser):
         if tag == "h2":
             print("h2 tag: " + str(attrs))
             h2tags.append(attrs)
-        # <h2><span>text</span>flag:</h2>
-        # tags: h2, span, h3
-        # data: text, flag
-
-        #.string
-
-# there are going to be attribute(s) that will denote an h2 tag as a flag
-    # he's keeping it a secret from me tho :/
-# <h2>flag: [our flag] </h2>
-
 
 class Crawler:
     def __init__(self, args):
@@ -63,30 +47,33 @@ class Crawler:
         self.port = args.port
         self.username = args.username
         self.password = args.password
-    # Get 
-    # Post to login
 
+    # takes in a BeautifulSoup object that can parse through an HTML document
+    # finds the anchor tags in there and adds links that we 1) haven't visited and 2) don't make us log out
+    # to the list of links, which we crawl through
     def parseForLinks(self, soup): #, response):
         anchors = soup.find_all('a')
         print("found anchors: " + str(anchors))
         for anchor in anchors:
-            print("one anchor " + str(anchor))
             href = anchor.get("href")
-            # print("href for anchor is" + str(anchor.href))
             if href not in links and href not in oldLinks and href.find("logout") != 1:
                 print("adding link " + str(anchor.get("href")))
                 links.append(anchor.get("href"))
             
-
+    # takes in a BeautifulSoup object that can parse through an HTML document
+    # tries to find flag in the h2 tags, and if successful, add it to our list of flags
     def parseForFlags(self, soup):
         h2tags = soup.find_all("h2")
         for tag in h2tags:
             text = tag.string
-            if text.find("flag") != -1:
+            if text.find("FLAG:") != -1 or tag.get("class") == "secret_flag":
+                # with open('testing_flags.txt', 'a') as f:
+                #     f.write(text + '\r\n')
                 flags.append(text)
-        
 
-        """
+        return None
+    
+    """
         1. keep a list of all the links we're going to GET & parse through
             - This will come from anchor tags and can start at 'GET /'
         2. in a loop, send and receive the HTTP requests from the server
@@ -94,10 +81,10 @@ class Crawler:
             - <h2> might be a flag
             - <a> -> gives a new link to add to the list of links. we will eventually search through it
         """
-
-        return None
     
 
+    # takes in an HTTP response and finds the csrftoken and sessionid in the header
+    # returns the two concatendated together
     def grabCookies(self, response):
         copyResp = response.decode('ascii')
         cookies = []
@@ -111,17 +98,16 @@ class Crawler:
         
         return wholeCookie
 
+    # takes in an HTTP response and determines which code we get in the response
+    # returns either a new location, a string "retry" to retry the link, or None
     def handleCodes(self, response):
-        #code = int(response.split()[1])
         copyResp = response.decode('ascii')
         code = int(copyResp.split()[1])
-        print("helper code code " + str(code))
         if code >= 300 and code < 400:
             newLocation = ""
             for headers in copyResp.split('\r\n'):
                 if headers.startswith('Location:'):
                     newLocation = headers[len('Location:'):].strip()
-                    print(newLocation)
                     return newLocation
         elif code >= 400 and code < 500:
             #skip that link
@@ -130,119 +116,57 @@ class Crawler:
             return "retry"
         return None
     
+    # takes in a BeautifulSoup object that can parse through an HTML document
+    # attempts to find the csrfmiddlewaretoken within an input tag in the soup object
     def getcmtval(self, soup):
         inputs = soup.find_all("input")
-        cmtval = None
-        foundCMT = False
 
-        print('inputs list is')
-        # print(inputs)
         for input in inputs:
-            print("input " + str(input))
-            # input is of form:
-            #name = soup.fin
             if input.get('name') == "csrfmiddlewaretoken":
-                print("found cmt " + input.get('value'))
                 return input.get('value')
-            print(input.get('value'))
+        
         return ""
 
-            # for tup in input:
-            #     if tup[0] ==  "name" and tup[1] == "csrfmiddlewaretoken":
-            #         foundCMT = True 
-            #         break
-            # # if we found the token
-            # if foundCMT:
-            #     # find the value within the list
-            #     for tup in input:
-            #         if tup[0] == "value":
-            #             cmtval = tup[1]
-            #             break
-            #     break
-            
-        # if not foundCMT:
-        #     print("did not find CMT in the input tags")
-        #     cmtval = None
-        # else:
-        #     print("found csrfmiddlewaretoken: " + cmtval)
+    def getreq(self, url, server, port):
+        getreq = "GET " + url + " HTTP/1.1\r\nHost: " + str(server) +":" + str(port) + "\r\nConnection:close\r\n\r\n"
         
-        # return cmtval
-
-    def run(self):
-        #Accept-Encoding: gzip, deflate 
-        request = "GET /accounts/login/?next=/fakebook/ HTTP/1.1\r\nHost: " + DEFAULT_SERVER + ": " + str(DEFAULT_PORT) +  "\r\n\r\n" #+ "\r\nUser-Agent: Mozilla/4.0 (compatible; MSIE5.01; Windows NT)\r\n" + "Accept-Language: en-us\r\n\r\n"
-        # need path, host, cookie
-        # Cookie : whatever the cookie is
-        # 302 - redirect; x has moved to location y in Location: header field
-        # very first request will be logging in, get the cookie after the response
-        # should use keep-alive or create a new TCP connection for each request
-
-        print("Request to %s:%d" % (self.server, self.port))
-        print(request)
+        return getreq
+        
+    def makeSock(self):
         mysocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         ssl_context = ssl.create_default_context()
         mysocket = ssl_context.wrap_socket(mysocket, server_hostname=DEFAULT_SERVER)
         mysocket.connect((self.server, self.port))
+        return mysocket
 
-        print("before first send")
+    def run(self):
+        request = self.getreq("/accounts/login/?next=/fakebook/", DEFAULT_SERVER, DEFAULT_PORT)
+        # request = "GET /accounts/login/?next=/fakebook/ HTTP/1.1\r\nHost: " + DEFAULT_SERVER + ": " + str(DEFAULT_PORT) +  "\r\nConnection: close\r\n\r\n" 
+
+        print("Request to %s:%d" % (self.server, self.port))
+        print(request)
+        mysocket = self.makeSock()
+
         mysocket.send(request.encode('ascii'))
-
-        # have to receive in a loop (len(data != 0))
-
-        """
-        
-        """
 
         firstResp = b''
         print("before first recv")
-        #read in large static amount
         data = mysocket.recv(9000)
         print("Response: " + str(data))
-        # TODO: not receiving the HTML in here
-        #firstResp += data #.decode('ascii')
         while len(data) != 0:
-            print("DATA LENGTH: " + str(len(data)))
-            print(data.decode('ascii'))
-            firstResp += data #.decode('ascii')
-            # print("Zezerofibo Mishveladze")
-            # if len(data) == 0:
-            #     print("no more data")
-            # if len(data) < 1000:
-            #     break
-            print("one rep")
+            firstResp += data
             data = mysocket.recv(9000)
-        #     print("DATA LENGTH: " + str(len(data)))
-            
-
-            #print("here?")
         
-        print("done reading")
         mysocket.close()
         
         firstResp = firstResp.decode('ascii')
-        print("first response is")
-        print(firstResp)
+        # print("first response is")
+        # print(firstResp)
         soup = BeautifulSoup(firstResp, "html.parser")
         #middleToken = soup.find('input', {'name': 'csrfmiddlewaretoken'})['value']
         #print("MIDDLE VAL " + str(middleToken))
-        print("pretty soups " + soup.prettify())
-        # soup = BeautifulSoup(html_doc, 'html.parser')
-        
-        # print(soup.prettify())
-        # print("soup title is " + soup.div)
-        #inputs = soup.find_all(inputs)
-        #parser = MyHTMLParser()
-        # contLenHead = b'Content-Length: '
-        # index = firstResp.find(contLenHead)
-        # if index != -1:
-        #     start = index + len(contLenHead)
-        #     end = firstResp.find(b'\r\n', start)
-        #     contentLength = int(firstResp[start:end])
-        #     print("Content len " + str(contentLength))
-        
-        #firstResp = firstResp.decode('ascii')
-
-        print("firstResp code" + str(int(firstResp.split()[1])))
+        # print("pretty soups " + soup.prettify())
+        # print("firstResp code" + str(int(firstResp.split()[1])))
 
         headers = []
         headers = firstResp.split('\r\n\r\n')[0].split('\r\n')
@@ -275,28 +199,16 @@ class Crawler:
         cmtval = self.getcmtval(soup)
         print("cmtval " + str(cmtval))
 
-        # foundCMT = False
-
-        # request = "GET /accounts/login/?next=/fakebook/ HTTP/1.1\r\nHost: " + DEFAULT_SERVER + "\r\n\r\n"
-        #POST /users/login HTTP/1.1HOST: www.example.com Content-Type: application/x-www-form-urlencoded Content-Length: 25 username=ME&password=pass
         # TODO: this should be refactored to work for any username & password combo
-        body = 'username=calle.d&password=001589490&csrfmiddlewaretoken='+ cmtval + '&next=/fakebook/'#+ '\r\n\r\n' 
-        #+ '&next=/'# \r\n\r\n'  #+ '&next=/fakebook/'  #&csrfmiddlewaretoken=<CSRF_TOKEN>&next=/fakebook/'
+        body = 'username=' + self.username + '&password=' + self.password + '&csrfmiddlewaretoken=' + cmtval + '&next=/fakebook/'
         contLen = len(body)
         
         print("body " + str(body))
         #method that handles responses based of codes
-        postReq = 'POST /accounts/login/ HTTP/1.1\r\nHost: proj5.3700.network:443\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: ' + str(contLen) + '\r\nCookie: ' + csrftoken +  ';' + secondCookie + '\r\n\r\n' + body + '\r\n\r\n'  # + '&next=/+ '&csrfmiddlewaretoken=' + cmtval  #  
+        postReq = 'POST /accounts/login/ HTTP/1.1\r\nHost: proj5.3700.network:443\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: ' + str(contLen) + '\r\nConnection: close\r\nCookie: ' + csrftoken +  ';' + secondCookie + '\r\n\r\n' + body + '\r\n\r\n'  # + '&next=/+ '&csrfmiddlewaretoken=' + cmtval  #  
         print("THIS IS THE PSOT REQUEST W E ESENT")
         print(postReq)
 
-
-        # should not take more than 10 minutes
-        # should use keep-alive; not using it is just more overhead
-        # keep-alive can be finnicky :(
-        # maybe try keep-alive
-
-        
         #postReq = "POST /accounts/login/ HTTP/1.1\r\nHOST: " + DEFAULT_SERVER + "\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: {contLen}\r\n" + "{body}\r\n\r\n" #+ #"Set-Cookie: csrftoken={cmtval}\r\nSet-Cookie: sessionid={secondCookie}\n\n{body}\r\n\r\n"
         
         # use content-length to read the body of the responses
@@ -307,34 +219,16 @@ class Crawler:
 
         mysocket.send(postReq.encode('ascii'))
         
-        # print("before sending")
-        #mysocket.send(postReq.encode('ascii'))
         
         data = mysocket.recv(1000)
-        # print("data we first receive after POST: ")
-        # print(data.decode('ascii'))
-        # print("Response after POST: ")
-        # print(data)
-
         postResp = b''
-        # print(data.decode('ascii'))
-        #postResp += data
         while len(data) != 0:
-            print(data.decode('ascii'))
-            # data = data.decode('ascii')
-            postResp += data #.decode('ascii')
-            #print("Dougal Trufull")
-            # if len(data) == 0:
-            #     print("no more data")
-            
-            # if len(data) < 1000:
-            #     break
-
+            postResp += data 
             data = mysocket.recv(1000)
 
         print("Response after POST")
         print(postResp.decode('ascii'))
-        print(len(postResp))
+        #print(len(postResp))
 
         newCookie = self.grabCookies(postResp)
         
@@ -360,21 +254,21 @@ class Crawler:
             oldLinks.append(nextLink)
             
             print("SENDING GET REQUEST TO " + nextLink)
-            newGet = "GET " + nextLink + " HTTP/1.1\r\nHost: " + DEFAULT_SERVER + "\r\nCookie: " + newCookie + "\r\n\r\n"
+            newGet = "GET " + nextLink + " HTTP/1.1\r\nHost: " + DEFAULT_SERVER + "\r\nCookie: " + newCookie + "\r\nConnection: close\r\n\r\n"
 
             #newGet = "GET " + nextLink + " HTTP/1.1\r\nHost: " + DEFAULT_SERVER + "\r\nCookie: " + csrftoken + "; " + secondCookie + "\r\n\r\n"
             print("GET REQUEST WE SEND IN LOOP")
             print(newGet)
             mysocket.send(newGet.encode('ascii'))
-            print(str(links))
+            #print(str(links))
 
             # read response & parse
             newResp = b''
             data = mysocket.recv(30000)
-            print(data.decode('ascii'))
+            # print(data.decode('ascii'))
             #newResp += data
             while len(data) != 0:
-                print(data.decode('ascii'))
+                # print(data.decode('ascii'))
                 newResp += data
                 data = mysocket.recv(1000)
             
@@ -391,13 +285,13 @@ class Crawler:
 
             elif newLocation != None:
                 print("was new loc")
-                newGetLoc = "GET " + newLocation + " HTTP/1.1\r\nHost: " + DEFAULT_SERVER + "\r\nCookie: " + newCookie + "\r\n\r\n"
+                newGetLoc = "GET " + newLocation + " HTTP/1.1\r\nHost: " + DEFAULT_SERVER + "\r\nCookie: " + newCookie + "\r\nConnection: close\r\n\r\n"
                 
                 #HTTP/1.1fdsafdas
                 print("new request \n" + str(newGetLoc))
                 oldLinks.append(newLocation)
 
-                print(newGetLoc)
+                #print(newGetLoc)
 
                 mysocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 ssl_context = ssl.create_default_context()
@@ -408,7 +302,7 @@ class Crawler:
 
                 newResp = b''
                 data = mysocket.recv(30000)
-                print(data.decode('ascii'))
+                #print(data.decode('ascii'))
                 newResp += data
                 # while len(data) != 0:
                 #     print(data.decode('ascii'))
@@ -425,21 +319,81 @@ class Crawler:
                 self.parseForLinks(soup)
                 self.parseForFlags(soup)
                 print("flags len: " + str(len(flags)))
-                print(flags)
+                #print(flags)
 
 
 
             self.parseForFlags(soup)
             print("h2s found here:")
-            print(soup.findall("h2"))
+            print(soup.find_all("h2"))
             print("flags len: " + str(len(flags)))
             print(flags)
 
             mysocket.close()
-            print("links to parse through")
-            print(links)
+            # print("links to parse through")
+            # print(links)
 
+
+        #body = 'username=calle.d&password=001589490&csrfmiddlewaretoken='+ cmtval + '&next=/fakebook/'#+ '\r\n\r\n' 
+        #+ '&next=/'# \r\n\r\n'  #+ '&next=/fakebook/'  #&csrfmiddlewaretoken=<CSRF_TOKEN>&next=/fakebook/'
+
+        # socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        # ssl_context = ssl.create_default_context()
+        # mysocket = ssl_context.wrap_socket(mysocket, server_hostname=DEFAULT_SERVER)
+        # mysocket.connect((self.server, self.port))
+
+        # have to receive in a loop (len(data != 0))
+
+        """
         
+        """
+
+
+        # soup = BeautifulSoup(html_doc, 'html.parser')
+        
+        # print(soup.prettify())
+        # print("soup title is " + soup.div)
+        #inputs = soup.find_all(inputs)
+        #parser = MyHTMLParser()
+        # contLenHead = b'Content-Length: '
+        # index = firstResp.find(contLenHead)
+        # if index != -1:
+        #     start = index + len(contLenHead)
+        #     end = firstResp.find(b'\r\n', start)
+        #     contentLength = int(firstResp[start:end])
+        #     print("Content len " + str(contentLength))
+        
+        #firstResp = firstResp.decode('ascii')
+        
+
+            #+ "\r\nUser-Agent: Mozilla/4.0 (compatible; MSIE5.01; Windows NT)\r\n" + "Accept-Language: en-us\r\n\r\n"
+        # need path, host, cookie
+        # Cookie : whatever the cookie is
+        # 302 - redirect; x has moved to location y in Location: header field
+        # very first request will be logging in, get the cookie after the response
+        # should use keep-alive or create a new TCP connection for each request
+        
+              # for tup in input:
+            #     if tup[0] ==  "name" and tup[1] == "csrfmiddlewaretoken":
+            #         foundCMT = True 
+            #         break
+            # # if we found the token
+            # if foundCMT:
+            #     # find the value within the list
+            #     for tup in input:
+            #         if tup[0] == "value":
+            #             cmtval = tup[1]
+            #             break
+            #     break
+            
+        # if not foundCMT:
+        #     print("did not find CMT in the input tags")
+        #     cmtval = None
+        # else:
+        #     print("found csrfmiddlewaretoken: " + cmtval)
+        
+        # return cmtval
+
         # for att in input:
             #     if next:
             #         cookie == att[1]
