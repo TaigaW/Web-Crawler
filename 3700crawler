@@ -47,7 +47,9 @@ class Crawler:
             href = anchor.get("href")
             if href not in links and href not in oldLinks and href.find("logout") != 1:
                 #rint("adding link " + str(anchor.get("href")))
+                
                 links.append(anchor.get("href"))
+
             
     # takes in a BeautifulSoup object that can parse through an HTML document
     # tries to find flag in the h2 tags, and if successful, add it to our list of flags
@@ -58,7 +60,8 @@ class Crawler:
             if text.find("FLAG:") != -1 or tag.get("class") == "secret_flag":
                 # with open('testing_flags.txt', 'a') as f:
                 #     f.write(text + '\r\n')
-                flags.append(text)
+                flagVal = text.split(': ')[1]
+                flags.append(flagVal)
 
         return None
 
@@ -199,6 +202,8 @@ class Crawler:
         # start looking through our list of links
         while links:
             if len(flags) == 5:
+                for flag in flags:
+                    print(flag)
                 break
             mysocket = self.makeSock()
             
@@ -257,7 +262,7 @@ class Crawler:
             self.parseForFlags(soup)
             # print(soup.find_all("h2"))
             # print("flags len: " + str(len(flags)))
-            print(flags)
+            #print(flags)
 
             mysocket.close()
 
